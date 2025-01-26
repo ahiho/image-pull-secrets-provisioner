@@ -19,6 +19,4 @@ jobs:
     - uses: docker/build-push-action@v6
       with:
         push: true
-        build-args:
-          TARGETARCH=linux/arm64
-        tags: ghcr.io/${{ github.repository }}:arm64-${{ github.ref_name }}
+        tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
