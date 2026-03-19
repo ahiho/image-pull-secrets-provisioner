@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -340,7 +341,89 @@ var _ = Describe("ServiceAccountReconciler", func() {
 				g.Expect(actual.ImagePullSecrets).To(WithTransform(extractNames, ConsistOf("static", secret.GetName())))
 			}).Should(Succeed())
 		})
+	})
 
-		// Other test cases are omitted because they are covered by the Google test cases.
+	Context("GitLab", func() {
+		sa := &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:    ns,
+				GenerateName: "sa-",
+				Annotations: map[string]string{
+					"imagepullsecrets.preferred.jp/registry":         "registry.gitlab.com/test",
+					"imagepullsecrets.preferred.jp/audience":         "https://gitlab.com",
+					"imagepullsecrets.preferred.jp/gitlab-client-id": "client-id",
+				},
+			},
+		}
+
+		It("Create and attach a Secret", func() {
+			sa := sa.DeepCopy()
+			Expect(k8sClient.Create(ctx, sa)).NotTo(HaveOccurred())
+			objectsToDelete = append(objectsToDelete, sa)
+
+			secret := &corev1.Secret{}
+			Eventually(func(g Gomega) {
+				secrets := &corev1.SecretList{}
+				g.Expect(k8sClient.List(ctx, secrets, client.InNamespace(ns), client.MatchingLabels{
+					"imagepullsecrets.preferred.jp/service-account": sa.GetName(),
+				})).NotTo(HaveOccurred())
+				g.Expect(secrets.Items).To(HaveLen(1))
+				secret = &secrets.Items[0]
+			}).Should(Succeed())
+
+			Expect(secret.Annotations).To(HaveKey("imagepullsecrets.preferred.jp/expires-at"))
+			// Username for GitLab OIDC should be "private-token"
+			var auth struct {
+				Auths map[string]struct {
+					Username string `json:"username"`
+					Password string `json:"password"`
+				} `json:"auths"`
+			}
+			Expect(json.Unmarshal(secret.Data[corev1.DockerConfigJsonKey], &auth)).To(Succeed())
+			Expect(auth.Auths["registry.gitlab.com/test"].Username).To(Equal("private-token"))
+		})
+	})
+
+	Context("Static Auth", func() {
+		sa := &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:    ns,
+				GenerateName: "sa-",
+				Annotations: map[string]string{
+					"imagepullsecrets.preferred.jp/registry":      "company.com/registry",
+					"imagepullsecrets.preferred.jp/auth-username": "static-user",
+					"imagepullsecrets.preferred.jp/auth-password": "static-password",
+				},
+			},
+		}
+
+		It("Create and attach a Secret", func() {
+			sa := sa.DeepCopy()
+			Expect(k8sClient.Create(ctx, sa)).NotTo(HaveOccurred())
+			objectsToDelete = append(objectsToDelete, sa)
+
+			secret := &corev1.Secret{}
+			Eventually(func(g Gomega) {
+				secrets := &corev1.SecretList{}
+				g.Expect(k8sClient.List(ctx, secrets, client.InNamespace(ns), client.MatchingLabels{
+					"imagepullsecrets.preferred.jp/service-account": sa.GetName(),
+				})).NotTo(HaveOccurred())
+				g.Expect(secrets.Items).To(HaveLen(1))
+				secret = &secrets.Items[0]
+			}).Should(Succeed())
+
+			// Static auth should have extremely long expiration.
+			Expect(secret.Annotations).To(HaveKey("imagepullsecrets.preferred.jp/expires-at"))
+
+			var auth struct {
+				Auths map[string]struct {
+					Username string `json:"username"`
+					Password string `json:"password"`
+				} `json:"auths"`
+			}
+			Expect(json.Unmarshal(secret.Data[corev1.DockerConfigJsonKey], &auth)).To(Succeed())
+			Expect(auth.Auths["company.com/registry"].Username).To(Equal("static-user"))
+			Expect(auth.Auths["company.com/registry"].Password).To(Equal("static-password"))
+		})
 	})
 })

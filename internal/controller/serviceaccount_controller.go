@@ -41,6 +41,7 @@ type serviceAccountReconciler struct {
 	eventRecorder record.EventRecorder
 	aws           aws
 	google        google
+	gitlab        gitlab
 	// Grace period for refreshing image pull secrets before they expires.
 	expirationGracePeriod time.Duration
 }
@@ -63,6 +64,7 @@ func NewServiceAccountReconciler(
 		eventRecorder:         eventRecorder,
 		aws:                   newAWS(),
 		google:                g,
+		gitlab:                newGitLabProvider(),
 		expirationGracePeriod: time.Minute,
 	}, nil
 }
@@ -331,6 +333,17 @@ func (r *serviceAccountReconciler) imagePullSecretAttached(sa *corev1.ServiceAcc
 func (r *serviceAccountReconciler) generateAccessToken(
 	ctx context.Context, sa *corev1.ServiceAccount, audience string,
 ) (username string, token string, expiresAt time.Time, _ error) {
+	// Static Auth.
+	if password := sa.Annotations[annotationKeyAuthPassword]; password != "" {
+		username := sa.Annotations[annotationKeyAuthUsername]
+		if username == "" {
+			username = "oauth2" // Default for many registries.
+		}
+
+		// Return a long expiration for static tokens to prevent frequent refreshes.
+		return username, password, time.Now().AddDate(100, 0, 0), nil
+	}
+
 	tokenReq := &authenticationv1.TokenRequest{
 		Spec: authenticationv1.TokenRequestSpec{
 			Audiences: []string{audience},
@@ -356,6 +369,17 @@ func (r *serviceAccountReconciler) generateAccessToken(
 		}
 
 		return "oauth2accesstoken", token, expiresAt, nil
+	}
+
+	// GitLab.
+	if clientID := sa.Annotations[annotationKeyGitLabClientID]; clientID != "" {
+		instanceURL := sa.Annotations[annotationKeyGitLabInstanceURL]
+		token, expiresAt, err := r.gitlab.GenerateAccessToken(ctx, tokenReq.Status.Token, instanceURL, clientID)
+		if err != nil {
+			return "", "", time.Time{}, fmt.Errorf("failed to swap GitLab OIDC token: %w", err)
+		}
+
+		return "private-token", token, expiresAt, nil
 	}
 
 	return "", "", time.Time{}, errors.New("ServiceAccount is missing configuration for image pull secret provisioning")
