@@ -119,6 +119,7 @@ var _ = BeforeSuite(func() {
 		eventRecorder:         k8sManager.GetEventRecorderFor("image-pull-secrets-provisioner"),
 		aws:                   &awsMock{},
 		google:                &gMock{},
+		gitlab:                &gitlabMock{},
 		expirationGracePeriod: 0, // To test skipping refreshing Secrets.
 	}).SetupWithManager(k8sManager)
 	Expect(err).NotTo(HaveOccurred())
@@ -185,6 +186,23 @@ func (g *gMock) GenerateAccessToken(
 	k8sServiceAccountToken string,
 	workloadIdentityProvider string,
 	googleServiceAccountEmail string,
+) (token string, expiresAt time.Time, _ error) {
+	token, err := randomString()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+
+	return token, time.Now().Add(tokenValidity), nil
+}
+
+// gitlabMock is a mock implementation of gitlab.
+type gitlabMock struct{}
+
+func (g *gitlabMock) GenerateAccessToken(
+	_ context.Context,
+	k8sToken string,
+	instanceURL string,
+	clientID string,
 ) (token string, expiresAt time.Time, _ error) {
 	token, err := randomString()
 	if err != nil {

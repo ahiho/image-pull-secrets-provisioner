@@ -31,6 +31,12 @@ const (
 	annotationKeyGoogleWIDP = metadataKeyPrefix + "googlecloud-workload-identity-provider"
 	annotationKeyGoogleSA   = metadataKeyPrefix + "googlecloud-service-account-email"
 
+	annotationKeyGitLabInstanceURL = metadataKeyPrefix + "gitlab-instance-url"
+	annotationKeyGitLabClientID    = metadataKeyPrefix + "gitlab-client-id"
+
+	annotationKeyAuthUsername = metadataKeyPrefix + "auth-username"
+	annotationKeyAuthPassword = metadataKeyPrefix + "auth-password"
+
 	annotationKeySecretName = metadataKeyPrefix + "secret-name"
 
 	// Annotation for Secrets to store the expiration time.

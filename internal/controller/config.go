@@ -28,6 +28,11 @@ func hasConfig(sa *corev1.ServiceAccount) bool {
 	if sa.Annotations[annotationKeyRegistry] == "" {
 		return false
 	}
+	// Static token.
+	if sa.Annotations[annotationKeyAuthPassword] != "" {
+		return true
+	}
+
 	if sa.Annotations[annotationKeyAudience] == "" {
 		return false
 	}
@@ -42,6 +47,11 @@ func hasConfig(sa *corev1.ServiceAccount) bool {
 		if sa.Annotations[annotationKeyGoogleSA] != "" {
 			return true
 		}
+	}
+
+	// GitLab.
+	if sa.Annotations[annotationKeyGitLabClientID] != "" {
+		return true
 	}
 
 	return false
